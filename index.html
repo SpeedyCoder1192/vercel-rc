@@ -1,57 +1,38 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>RC Private Dashboard</title>
+    <title>RC Dashboard</title>
     <style>
-        body { background: #0f0f0f; color: #00ff00; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        #screen-container { position: relative; border: 2px solid #333; box-shadow: 0 0 20px rgba(0,255,0,0.2); }
-        video { width: 360px; height: auto; display: block; background: #000; cursor: crosshair; }
-        .status-bar { margin-top: 10px; font-size: 14px; }
+        body { background: #000; color: #0f0; font-family: monospace; text-align: center; }
+        video { width: 360px; height: auto; border: 2px solid #333; cursor: crosshair; background: #111; }
     </style>
 </head>
 <body>
-    <h2>SECURE REMOTE ACCESS</h2>
-    <div id="screen-container">
-        <video id="remoteView" autoplay playsinline></video>
-    </div>
-    <div class="status-bar">Status: <span id="status">INITIALIZING...</span></div>
+    <h1>REMOTE CONTROL ACTIVE</h1>
+    <video id="remoteVideo" autoplay playsinline></video>
+    <p id="status">Connecting...</p>
 
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
     <script>
-        const SECRET = "YourSecretKeyHere";
-        const video = document.getElementById('remoteView');
-        const statusText = document.getElementById('status');
-
-        // Connect with the required header
-        const socket = io({
-            extraHeaders: { "ModHeader": SECRET }
-        });
+        const SECRET = "66767";
+        const socket = io({ extraHeaders: { "ModHeader": SECRET } });
+        const video = document.getElementById('remoteVideo');
 
         socket.on('connect', () => {
-            statusText.innerText = "CONNECTED";
+            document.getElementById('status').innerText = "Connected";
             socket.emit('register', 'controller');
         });
 
-        // Click Handling: Send coordinates to phone
         video.addEventListener('mousedown', (e) => {
             const rect = video.getBoundingClientRect();
-            // Maps click to 0.0 - 1.0 scale so it works regardless of phone resolution
-            const relX = (e.clientX - rect.left) / rect.width;
-            const relY = (e.clientY - rect.top) / rect.height;
-
             socket.emit('command', {
                 type: 'CLICK',
-                x: relX,
-                y: relY
+                x: (e.clientX - rect.left) / rect.width,
+                y: (e.clientY - rect.top) / rect.height
             });
         });
 
-        // WebRTC Basic Logic
-        const pc = new RTCPeerConnection({
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-        });
-
+        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
         pc.ontrack = (event) => { video.srcObject = event.streams[0]; };
 
         socket.on('signal', async (data) => {
@@ -62,9 +43,7 @@
                     await pc.setLocalDescription(answer);
                     socket.emit('signal', { role: 'controller', payload: { sdp: pc.localDescription } });
                 }
-            } else if (data.candidate) {
-                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-            }
+            } else if (data.candidate) await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
         });
     </script>
 </body>
