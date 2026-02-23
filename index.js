@@ -3,18 +3,15 @@ const fs = require("fs");
 const path = require("path");
 const { Server } = require("socket.io");
 
-const SECRET_KEY = "66767"
+const SECRET_KEY = "66767";
 const PORT = process.env.PORT || 3000;
 
 const server = http.createServer((req, res) => {
-    // SECURITY: ModHeader check for the HTML Dashboard
     if (req.headers['modheader'] !== SECRET_KEY) {
         res.writeHead(403);
-        res.end("Forbidden");
+        res.end("Access Denied");
         return;
     }
-
-    // Serve the Dashboard
     if (req.url === "/" || req.url === "/index.html") {
         fs.readFile(path.join(__dirname, "index.html"), (err, data) => {
             res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -25,23 +22,18 @@ const server = http.createServer((req, res) => {
 
 const io = new Server(server, { cors: { origin: "*" } });
 
-// WebSocket Security
 io.use((socket, next) => {
     if (socket.handshake.headers['modheader'] === SECRET_KEY) return next();
-    next(new Error("Auth error"));
+    next(new Error("Authentication error"));
 });
 
 io.on("connection", (socket) => {
     socket.on("register", (role) => socket.join(role));
-    
     socket.on("signal", (data) => {
         const target = data.role === "phone" ? "controller" : "phone";
         socket.to(target).emit("signal", data.payload);
     });
-
-    socket.on("command", (data) => {
-        socket.to("phone").emit("command", data);
-    });
+    socket.on("command", (data) => socket.to("phone").emit("command", data));
 });
 
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Server running on ${PORT}`));
