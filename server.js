@@ -5,39 +5,54 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
+
+// Initialize Socket.io with permissive CORS for Android and Web clients
 const io = new Server(server, {
-    cors: { origin: "*" }
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
 });
 
-// Serves your web controller from the 'public' folder
+// Serves the web dashboard from a folder named 'public'
 app.use(express.static(path.join(__dirname, 'public')));
 
 io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
+    console.log(`[CONN] User connected: ${socket.id}`);
 
+    // Devices and Browsers join the same room (e.g., 'device-1')
     socket.on('join', (room) => {
         socket.join(room);
-        console.log(`Socket ${socket.id} joined room: ${room}`);
+        console.log(`[ROOM] User ${socket.id} joined: ${room}`);
     });
 
-    // Relay WebRTC signals (Offer, Answer, ICE Candidates)
+    // RELAY: This passes WebRTC Offers, Answers, and ICE Candidates
     socket.on('signal', (data) => {
-        // data looks like: { room: 'device-1', type: 'offer', signal: { sdp: '...' } }
+        if (!data.room) return;
+        
+        // Log the signal type to debug the handshake flow
+        console.log(`[SIGNAL] Relaying ${data.type} to room ${data.room}`);
+        
+        // Broadcast to everyone else in the room
         socket.to(data.room).emit('signal', data);
     });
 
-    // Relay Remote Control commands (Clicks)
+    // RELAY: This passes click/gesture commands
     socket.on('command', (data) => {
-        console.log(`Command relayed: ${data.type} to ${data.room}`);
+        if (!data.room) return;
+        
+        console.log(`[CMD] Relaying ${data.type} (x:${data.x}, y:${data.y})`);
         socket.to(data.room).emit('command', data);
     });
 
     socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
+        console.log(`[DISCONN] User disconnected: ${socket.id}`);
     });
 });
 
+// Render provides the PORT environment variable automatically
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`>>> Server is live on port ${PORT}`);
+    console.log(`>>> Web dashboard: https://rc-hecl.onrender.com`);
 });
