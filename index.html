@@ -1,49 +1,54 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>RC Dashboard</title>
+    <title>System RC Web Client</title>
     <style>
-        body { background: #000; color: #0f0; font-family: monospace; text-align: center; }
-        video { width: 360px; height: auto; border: 2px solid #333; cursor: crosshair; background: #111; }
+        body { margin: 0; background: #222; display: flex; flex-direction: column; align-items: center; color: white; font-family: sans-serif; }
+        #remoteVideo { width: 100%; max-width: 400px; border: 2px solid #444; margin-top: 20px; cursor: crosshair; }
+        .status { padding: 10px; color: #0f0; }
     </style>
 </head>
 <body>
-    <h1>REMOTE CONTROL ACTIVE</h1>
+    <h2>Remote Device View</h2>
+    <div id="status" class="status">Waiting for stream...</div>
     <video id="remoteVideo" autoplay playsinline></video>
-    <p id="status">Connecting...</p>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const SECRET = "66767";
-        const socket = io({ extraHeaders: { "ModHeader": SECRET } });
+        const socket = io();
+        const room = "device-1";
         const video = document.getElementById('remoteVideo');
-
-        socket.on('connect', () => {
-            document.getElementById('status').innerText = "Connected";
-            socket.emit('register', 'controller');
+        const peerConnection = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         });
 
+        socket.emit('join', room);
+
+        // Receive Stream
+        peerConnection.ontrack = (event) => {
+            video.srcObject = event.streams[0];
+            document.getElementById('status').innerText = "Streaming Live";
+        };
+
+        // Handle Signaling
+        socket.on('signal', async (data) => {
+            if (data.type === 'offer') {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal));
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                socket.emit('signal', { room, signal: answer, type: 'answer' });
+            } else if (data.type === 'ice') {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(data.signal));
+            }
+        });
+
+        // Capture Clicks and send to Phone
         video.addEventListener('mousedown', (e) => {
             const rect = video.getBoundingClientRect();
-            socket.emit('command', {
-                type: 'CLICK',
-                x: (e.clientX - rect.left) / rect.width,
-                y: (e.clientY - rect.top) / rect.height
-            });
-        });
-
-        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-        pc.ontrack = (event) => { video.srcObject = event.streams[0]; };
-
-        socket.on('signal', async (data) => {
-            if (data.sdp) {
-                await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-                if (data.sdp.type === 'offer') {
-                    const answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-                    socket.emit('signal', { role: 'controller', payload: { sdp: pc.localDescription } });
-                }
-            } else if (data.candidate) await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            const x = ((e.clientX - rect.left) / rect.width) * 1080; // Scale to phone width
+            const y = ((e.clientY - rect.top) / rect.height) * 2400; // Scale to phone height
+            socket.emit('command', { type: 'click', x, y, room });
+            console.log(`Sent click: ${x}, ${y}`);
         });
     </script>
 </body>
