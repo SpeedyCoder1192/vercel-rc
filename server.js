@@ -5,30 +5,33 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, {
+    cors: { origin: "*" }
+});
 
-app.use(express.static('public'));
+// Serve the web interface
+app.use(express.static(path.join(__dirname, 'public')));
 
 io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
+    console.log('Connected:', socket.id);
 
-    // Join a specific room (e.g., "device-1")
     socket.on('join', (room) => {
         socket.join(room);
-        console.log(`Socket ${socket.id} joined room ${room}`);
+        console.log(`Socket ${socket.id} joined room: ${room}`);
     });
 
-    // Relay WebRTC signals (Offer, Answer, ICE Candidates)
+    // The "Mailman" logic: Just relay messages to the other person in the room
     socket.on('signal', (data) => {
-        // data contains { room, signal, type }
+        // We broadcast to everyone in the room except the sender
         socket.to(data.room).emit('signal', data);
     });
 
-    // Relay Click commands from Browser to Phone
     socket.on('command', (data) => {
         socket.to(data.room).emit('command', data);
     });
+
+    socket.on('disconnect', () => console.log('Disconnected:', socket.id));
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Server on port ${PORT}`));
