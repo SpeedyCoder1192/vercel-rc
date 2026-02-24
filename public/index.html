@@ -1,55 +1,53 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>System RC Web Client</title>
+    <title>Remote View</title>
     <style>
-        body { margin: 0; background: #222; display: flex; flex-direction: column; align-items: center; color: white; font-family: sans-serif; }
-        #remoteVideo { width: 100%; max-width: 400px; border: 2px solid #444; margin-top: 20px; cursor: crosshair; }
-        .status { padding: 10px; color: #0f0; }
+        video { width: 100%; max-width: 400px; background: black; border: 2px solid #333; }
     </style>
 </head>
 <body>
-    <h2>Remote Device View</h2>
-    <div id="status" class="status">Waiting for stream...</div>
     <video id="remoteVideo" autoplay playsinline muted></video>
-
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        const room = "device-1";
-        const video = document.getElementById('remoteVideo');
-        const peerConnection = new RTCPeerConnection({
+        const room = 'device-1';
+        const remoteVideo = document.getElementById('remoteVideo');
+
+        const pc = new RTCPeerConnection({
             iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         });
 
         socket.emit('join', room);
 
-        // Receive Stream
-        peerConnection.ontrack = (event) => {
-            video.srcObject = event.streams[0];
-            document.getElementById('status').innerText = "Streaming Live";
+        // 1. Handle incoming signals from Android
+        socket.on('signal', async (data) => {
+            try {
+                if (data.type === 'offer') {
+                    // Android puts SDP inside 'signal' property
+                    await pc.setRemoteDescription(new RTCSessionDescription(data.signal));
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    socket.emit('signal', { room, type: 'answer', signal: answer });
+                } else if (data.type === 'ice') {
+                    await pc.addIceCandidate(new RTCIceCandidate(data.signal));
+                }
+            } catch (e) { console.error("Signaling error:", e); }
+        });
+
+        // 2. Display the stream
+        pc.ontrack = (event) => {
+            console.log("Stream received!");
+            remoteVideo.srcObject = event.streams[0];
         };
 
-        // Handle Signaling
-        socket.on('signal', async (data) => {
-            if (data.type === 'offer') {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal));
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-                socket.emit('signal', { room, signal: answer, type: 'answer' });
-            } else if (data.type === 'ice') {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(data.signal));
-            }
-        });
-
-        // Capture Clicks and send to Phone
-        video.addEventListener('mousedown', (e) => {
-            const rect = video.getBoundingClientRect();
-            const x = ((e.clientX - rect.left) / rect.width) * 1080; // Scale to phone width
-            const y = ((e.clientY - rect.top) / rect.height) * 2400; // Scale to phone height
-            socket.emit('command', { type: 'click', x, y, room });
-            console.log(`Sent click: ${x}, ${y}`);
-        });
+        // 3. Send clicks back to Android
+        remoteVideo.onclick = (e) => {
+            const rect = remoteVideo.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width;
+            const y = (e.clientY - rect.top) / rect.height;
+            socket.emit('command', { room, type: 'click', x, y });
+        };
     </script>
 </body>
 </html>
