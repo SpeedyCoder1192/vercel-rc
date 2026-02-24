@@ -1,11 +1,12 @@
 {
-  "name": "rc-server",
+  "name": "webrtc-remote-control",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "server.js",
   "dependencies": {
-    "socket.io": "^4.7.2"
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1"
   },
   "scripts": {
-    "start": "node index.js"
+    "start": "node server.js"
   }
 }
